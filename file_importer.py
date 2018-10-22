@@ -122,4 +122,29 @@ class Read_Text:
 
         return (fold)
 
+    def get_negative_training_set(self):
+        true = self.get_training_neg_true()
+        false = self.get_training_neg_false()
+        res = []
+        for review in true:
+            res.append((review, 'legit'))
+
+        for review in false:
+            res.append((review, 'fake'))
+
+        return res
+
+    def get_negative_test_set(self):
+        true = self.get_test_neg_true()
+        false = self.get_test_neg_false()
+        res   = []
+
+        for review in true:
+            res.append((review,'legit'))
+
+        for review in false:
+            res.append((review,'fake'))
+
+        return(res)
+
 ####
