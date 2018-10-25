@@ -1,23 +1,9 @@
-###################################################################################################
-# ass2.R                                                                                          #
-# @author:  Ioannis Pavlos Panteliadis <i.p.panteliadis@students.uu.nl>                           #
-# @author:  Renis Krisafi <r.krisafi@students.uu.nl>                                              #
-# @brief:   This file contains function declarations and implementations for the 2nd assignment   #
-#           in the Data Mining class of the Utrecht University.                                   #
-###################################################################################################
 
 # load the required packages
 
 if (!require("rpart.plot")) {
     install.packages("rpart.plot", dependencies = TRUE, quiet = TRUE)
     library("rpart.plot", quietly = TRUE)
-}
-
-
-if (!require("tm")) {
-    install.packages("slam", dependencies = TRUE, quiet = TRUE)
-    install.packages("tm", repos="http://R-Forge.R-project.org", dependencies = TRUE, quiet = TRUE)
-    library(tm, quietly = TRUE)
 }
 
 if (!require("glmnet")) {
@@ -98,6 +84,7 @@ interpret.cf <- function(t = c()) {
 read.train.from.directory <- function(dir = "") {
     d <- paste(dir, "fold", 1, "/",sep = '')
     corp <- VCorpus(DirSource(d, encoding="UTF-8"))
+    
     for (i in 2:4) {
         d <- paste(dir, "fold", i, "/", sep = '')
         corp <- c(corp, VCorpus(DirSource(d, encoding="UTF-8")))
@@ -118,12 +105,14 @@ preprocess <- function(corpus) {
 }
 
 
-neg.dec.all <- read.train.from.directory(dir = "../../op_spam_v1.4/negative_polarity/deceptive_from_MTurk/")
-reviews.neg.dec.test <- VCorpus(DirSource("../../op_spam_v1.4/negative_polarity/deceptive_from_MTurk/fold5/", encoding="UTF-8"))
+#setwd('/Users/Niels/Desktop/Practicum_2')
+
+neg.dec.all <- read.train.from.directory(dir = "database/negative_polarity/deceptive_from_MTurk/")
+reviews.neg.dec.test <- VCorpus(DirSource("database/negative_polarity/deceptive_from_MTurk/fold5/", encoding="UTF-8"))
 
 
-neg.truth.all <- read.train.from.directory(dir = "../../op_spam_v1.4/negative_polarity/truthful_from_Web/")
-reviews.neg.truth.test <- VCorpus(DirSource("../../op_spam_v1.4/negative_polarity/truthful_from_Web/fold5/", encoding="UTF-8"))
+neg.truth.all <- read.train.from.directory(dir = "database/negative_polarity/truthful_from_Web/")
+reviews.neg.truth.test <- VCorpus(DirSource("database/negative_polarity/truthful_from_Web/fold5/", encoding="UTF-8"))
 
 
 reviews.all      <- c(neg.dec.all, neg.truth.all)
@@ -145,25 +134,72 @@ index.train <- c(index.neg, index.pos)
 
 
 train.dtm <- DocumentTermMatrix(reviews.all[index.train])
-train.dtm <- removeSparseTerms(train.dtm, 0.95)
+train.dtm.verysparse <- train.dtm
+train.dtm.sparse <- removeSparseTerms(train.dtm, 0.95)
+train.dtm.lessparse <- removeSparseTerms(train.dtm, 0.6)
 
 ##################################
 # Naive Bayes
-reviews.mnb <- train.mnb(as.matrix(train.dtm), labels[index.train])
+NaiveBayesNormal <-function(data){
+  
+  reviews.mnb <- train.mnb(as.matrix(data), labels[index.train])
+  
+  test.dtm <- DocumentTermMatrix(reviews.all[-index.train],
+                                 list(dictionary=dimnames(data)[[2]]))
+  
+  
+  reviews.mnb.pred <- predict.mnb(reviews.mnb, as.matrix(test.dtm))
+  nb.cm <- table(reviews.mnb.pred, labels[-index.train])
+  interpret.cf(nb.cm)
+}
 
-test.dtm <- DocumentTermMatrix(reviews.all[-index.train],
-                               list(dictionary=dimnames(train.dtm)[[2]]))
+BigramTokenizer <-function(x) unlist(lapply(ngrams(words(x), c(1,2,3)), paste, collapse = " "), use.names = FALSE)
+
+NaiveBayesBi <- function(){
+  # extract bigrams
+  train.dtm2 <- DocumentTermMatrix(reviews.all[index.train],
+                                   control = list(tokenize = BigramTokenizer))
+  
+  train.dtm2 <- removeSparseTerms(train.dtm2,0.99)
+  
+  train.dat1 <- as.matrix(train.dtm)
+  train.dat2 <- as.matrix(train.dtm2)
+  train.dat <- cbind(train.dat1,train.dat2)
+  
+  
+  reviews.mnb <- train.mnb(as.matrix(train.dat), labels[index.train])
+  
+  #using training dic
+  test3.dtm <- DocumentTermMatrix(reviews.all[-index.train],
+                                  list(dictionary=dimnames(train.dat)[[2]]))
+  
+  #convert to ordinary matrix
+  test3.dat <- as.matrix(test3.dtm)
+  
+  # get columns in the same order as on the training set
+  test3.dat <- test3.dat[,dimnames(train.dat)[[2]]]
+  
+
+  reviews.mnb.pred <- predict.mnb(reviews.mnb, as.matrix(test3.dtm))
+  
+  nb.cm <- table(reviews.mnb.pred, labels[-index.train])
+  interpret.cf(nb.cm)
+}
 
 
-reviews.mnb.pred <- predict.mnb(reviews.mnb, as.matrix(test.dtm))
-nb.cm <- table(reviews.mnb.pred, labels[-index.train])
-interpret.cf(nb.cm)
+print('Not removed anything')
+NaiveBayesNormal(train.dtm.verysparse)
+
+print('Removed 0.95')
+NaiveBayesNormal(train.dtm.sparse)
+
+print('Removed 0.6')
+NaiveBayesNormal(train.dtm.lessparse)
 
 ###################################
 # Classification Tree
 # Grow the tree
-reviews.rpart <- rpart(label~., 
-                       data = data.frame(as.matrix(train.dtm), 
+reviews.rpart <- rpart(label~., data = data.frame(as.matrix(train.dtm), 
                        label=labels[index.train]), cp=0, method="class")
 # simple tree for plotting
 reviews.rpart.pruned <- prune(reviews.rpart, cp=1.37e-02)
@@ -179,16 +215,68 @@ s <- table(reviews.rpart.pred, labels[-index.train])
 interpret.cf(s)
 # accuracy is worse than naive Bayes!
 
-# logistic regression with lasso penalty
-reviews.glmnet <- cv.glmnet(as.matrix(train.dtm), labels[index.train], family="binomial",type.measure="class")
-plot(reviews.glmnet)
-coef(reviews.glmnet, s="lambda.1se")
-reviews.logreg.pred <- predict(reviews.glmnet,
-                               newx=as.matrix(test.dtm), s="lambda.1se", type="class")
 
-# show confusion matrix
-lr <- table(reviews.logreg.pred, labels[-index.train])
-interpret.cf(lr)
+
+###################################
+# logistic regression with lasso penalty
+logisticRegNormal <- function() {
+
+  test.dtm <- DocumentTermMatrix(reviews.all[-index.train],
+                                 list(dictionary=dimnames(train.dtm)[[2]]))
+  
+  reviews.glmnet <- cv.glmnet(as.matrix(train.dtm), labels[index.train], family="binomial",type.measure="class")
+  
+  plot(reviews.glmnet)
+  coef(reviews.glmnet, s="lambda.1se")
+  
+  reviews.logreg.pred <- predict(reviews.glmnet,
+                                 newx=as.matrix(test.dtm), s="lambda.1se", type="class")
+  
+  # show confusion matrix
+  lr <- table(reviews.logreg.pred, labels[-index.train])
+  interpret.cf(lr)
+  
+}
+
+###################################
+# logistic regression with lasso penalty 7 using Bigrams
+logisticRegBi <- function() {
+  
+  # extract bigrams
+  train.dtm2 <- DocumentTermMatrix(reviews.all[index.train],
+                                   control = list(tokenize = BigramTokenizer))
+  train.dtm2 <- removeSparseTerms(train.dtm2,0.99)
+  
+  train.dat1 <- as.matrix(train.dtm)
+  train.dat2 <- as.matrix(train.dtm2)
+  train.dat <- cbind(train.dat1,train.dat2)
+  
+  # fit regularized logistic regression model
+  # use cross-validation to evaluate different lambda values
+  reviews3.glmnet <- cv.glmnet(train.dat,labels[index.train],
+                               family="binomial",type.measure="class")
+  # show coefficient estimates for lambda-1se
+  coef(reviews3.glmnet,s="lambda.1se")
+  
+  #using training dic
+  test3.dtm <- DocumentTermMatrix(reviews.all[-index.train],
+                                  list(dictionary=dimnames(train.dat)[[2]]))
+  
+  #convert to ordinary matrix
+  test3.dat <- as.matrix(test3.dtm)
+  
+  # get columns in the same order as on the training set
+  test3.dat <- test3.dat[,dimnames(train.dat)[[2]]]
+  
+  # make predictions using lambda.1se
+  reviews.logreg.pred3 <- predict(reviews3.glmnet,newx=test3.dat,
+                                    s="lambda.1se",type="class")
+  
+  # show confusion matrix
+  lr <- table(reviews.logreg.pred3, labels[-index.train])
+  interpret.cf(lr)
+  
+}
 
 
 
