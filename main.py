@@ -1,7 +1,7 @@
 from file_importer import Read_Text
 from nltk.tokenize import word_tokenize
 
-from textblob.classifiers import NaiveBayesClassifier
+from textblob.classifiers import *
 
 import nltk
 nltk.download('punkt')
@@ -40,3 +40,6 @@ print('True positives: ' + str(true_true))
 print('True negatives: ' + str(false_false))
 print('False postives: ' + str(false_true))
 print('False negatives: ' + str(true_false))
+
+
+cl = DecisionTreeClassifier(training_set)
