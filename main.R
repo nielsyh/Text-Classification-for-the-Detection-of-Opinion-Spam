@@ -18,39 +18,40 @@ if (!require("randomForest")) {
 
 # 
 # 
-train.mnb <- function (dtm=train.dtm,labels=c()) {
-    call <- match.call()
-    V <- ncol(dtm)
-    N <- nrow(dtm)
-    prior <- table(labels)/N
-    labelnames <- names(prior)
-    nclass <- length(prior)
-    cond.probs <- matrix(nrow=V , ncol=nclass)
-    dimnames(cond.probs)[[1]] <- dimnames(dtm)[[2]] 
-    dimnames(cond.probs)[[2]] <- labelnames
-    index <- list(length=nclass)
-    for (j in 1:nclass){
-        index[[j]] <- labels == labelnames[j]
+train.mnb <- function (dtm,labels) 
+{
+  call <- match.call()
+  V <- ncol(dtm)
+  N <- nrow(dtm)
+  prior <- table(labels)/N
+  labelnames <- names(prior)
+  nclass <- length(prior)
+  cond.probs <- matrix(nrow=V,ncol=nclass)
+  dimnames(cond.probs)[[1]] <- dimnames(dtm)[[2]]
+  dimnames(cond.probs)[[2]] <- labelnames
+  index <- list(length=nclass)
+  for(j in 1:nclass){
+    index[[j]] <- c(1:N)[labels == labelnames[j]]
+  }
+  
+  for(i in 1:V){
+    for(j in 1:nclass){
+      cond.probs[i,j] <- (sum(dtm[index[[j]],i])+1)/(sum(dtm[index[[j]],])+V)
     }
-    
-    for (i in 1:V) {
-        for (j in 1:nclass){
-            
-            cond.probs[i,j] <- (sum(dtm[index[[j]],i])+1)/(sum(dtm[index[[j]],])+V) 
-        }
-    } 
-    list(call=call,prior=prior,cond.probs=cond.probs)
+  }
+  list(call=call,prior=prior,cond.probs=cond.probs)    
 }
 
-# 
-predict.mnb <- function (model=model,dtm=dtm) {
+predict.mnb <-
+  function (model,dtm) 
+  {
     classlabels <- dimnames(model$cond.probs)[[2]]
     logprobs <- dtm %*% log(model$cond.probs)
     N <- nrow(dtm)
     nclass <- ncol(model$cond.probs)
-    logprobs <- logprobs + matrix(nrow=N, ncol=nclass, log(model$prior), byrow=T)
+    logprobs <- logprobs+matrix(nrow=N,ncol=nclass,log(model$prior),byrow=T)
     classlabels[max.col(logprobs)]
-}
+  }
 
 
 # Reads a confusion matrix generated with table() and reports quality measures
@@ -77,9 +78,6 @@ interpret.cf <- function(t = c()) {
     print (paste("Precision: ", pr, sep = ''))
 }
 
-
-
-# 
 # 
 read.train.from.directory <- function(dir = "") {
     d <- paste(dir, "fold", 1, "/",sep = '')
@@ -92,7 +90,6 @@ read.train.from.directory <- function(dir = "") {
     return (corp)
 }
 
-# 
 # 
 preprocess <- function(corpus) {
     corpus <- tm_map(corpus, removeNumbers)
@@ -124,9 +121,7 @@ reviews.all <- preprocess(reviews.all)
 
 reviews.neg.dec.test <- preprocess(reviews.neg.dec.test)
 
-
 labels <- c(rep(0,320), rep(1,320))
-
 
 index.neg <- sample(320,100)
 index.pos <- 320+sample(320,100)
@@ -138,8 +133,8 @@ train.dtm.verysparse <- train.dtm
 train.dtm.sparse <- removeSparseTerms(train.dtm, 0.95)
 train.dtm.lessparse <- removeSparseTerms(train.dtm, 0.6)
 
-##################################
-# Naive Bayes
+
+# Naive Bayes normal
 NaiveBayesNormal <-function(data){
   
   reviews.mnb <- train.mnb(as.matrix(data), labels[index.train])
@@ -153,8 +148,11 @@ NaiveBayesNormal <-function(data){
   interpret.cf(nb.cm)
 }
 
+#need this for bigrams
 BigramTokenizer <-function(x) unlist(lapply(ngrams(words(x), c(1,2,3)), paste, collapse = " "), use.names = FALSE)
 
+
+#naive bayes bigram <- not working yet
 NaiveBayesBi <- function(){
   # extract bigrams
   train.dtm2 <- DocumentTermMatrix(reviews.all[index.train],
